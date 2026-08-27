@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WAX Adventure Viewer</title>
+<style>
+body{font-family:Arial;margin:0;padding:16px;background:#f5f5f5}.box{max-width:1000px;margin:auto;background:white;padding:16px;border-radius:12px}
+input,button{padding:11px;font-size:16px;margin:4px}input{width:180px}.error{color:#b00020}.wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:500px}th,td{border:1px solid #ddd;padding:8px}th{background:#eee}
+.sort{cursor:pointer}.card{background:#f7f7f7;padding:12px;border-radius:8px;overflow:auto}.top-user{margin-bottom:16px}.nfts{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.nft{width:110px}.nft img{width:110px;height:110px;object-fit:cover;border-radius:10px;border:1px solid #ddd;background:#eee}.nft-name{font-size:12px;margin-top:4px;word-break:break-word}
+</style></head>
+<body><div class="box">
+<h2>WAX Adventure Viewer</h2>
+<input id="id" type="number" value="1198" placeholder="Adventure ID">
+<button onclick="load()">Load Adventure</button>
+<button onclick="loadLatest()">🔄 Latest Adventure</button>
+<div id="status"></div><div id="error" class="error"></div>
+<h3>🗂️ Adventure</h3><div id="adv" class="card">Enter an ID and press Load.</div>
+<h3>🏆 Highest Score</h3><div id="topUsers" class="card">Load an Adventure to see the highest-score user(s).</div>
+<h3>👥 Participants</h3><div id="count"></div>
+<div class="wrap"><table><thead><tr><th>Rank</th><th>Wallet</th>
+<th class="sort" onclick="sortScore()">Score ↕</th></tr></thead>
+<tbody id="body"></tbody></table></div></div>
+<script>
+const API_BASE="https://wax-adventure-filter.onrender.com";
+let rows=[],desc=true;
+async function loadLatest(){
+ const err=document.getElementById("error");
+ err.textContent="";
+ document.getElementById("status").textContent="Finding latest adventure...";
+ try{
+  const response=await fetch(API_BASE+"/latest-adventure");
+  const data=await response.json();
+  if(!response.ok) throw new Error(data.error||"Could not find latest adventure.");
+  document.getElementById("id").value=data.adventure_id;
+  await load();
+ }catch(e){
+  document.getElementById("status").textContent="";
+  document.getElementById("adv").textContent="";
+  document.getElementById("count").textContent="";
+  err.textContent="Failed to fetch: "+e.message;
+ }
+}
+
+async function load(){
+ const id=document.getElementById("id").value.trim(), err=document.getElementById("error");
+ err.textContent="";document.getElementById("status").textContent="Loading...";
+ try{
+  const [a,p,t]=await Promise.all([
+   fetch(API_BASE+"/adventure?adventure_id="+encodeURIComponent(id)),
+   fetch(API_BASE+"/participants?adventure_id="+encodeURIComponent(id)),
+   fetch(API_BASE+"/top-users-nfts?adventure_id="+encodeURIComponent(id))
+  ]);
+  const ad=await a.json(), pd=await p.json(), td=await t.json();
+  if(!a.ok) throw new Error(ad.error||"Adventure request failed");
+  if(!p.ok) throw new Error(pd.error||"Participants request failed");
+  if(!t.ok) throw new Error(td.error||"Top users request failed");
+  rows=pd.rows||[];desc=true;sortScore(false);
+  document.getElementById("status").textContent="Adventure "+id+" loaded";
+  document.getElementById("count").textContent=pd.count+" participant(s)";
+  if(ad.rows && ad.rows.length){
+   const adventure = ad.rows[0];
+   const title = adventure.title || adventure.name || "";
+   document.getElementById("adv").innerHTML =
+     "<h2 style=\"margin:0;\">🗂️ " + esc(title || "Adventure") + "</h2>";
+  }else{
+   document.getElementById("adv").textContent = "No adventure found.";
+  }
+ }catch(e){document.getElementById("status").textContent="";document.getElementById("adv").textContent="";
+  err.textContent="Failed to fetch: "+e.message;}
+}
+function renderTopUsers(data){
+ const box=document.getElementById("topUsers");
+ if(!data.users || !data.users.length){
+  box.textContent="No highest-score user found.";
+  return;
+ }
+ let html="<strong>Highest Score: "+esc(data.highest_score)+"</strong>";
+ data.users.forEach(u=>{
+  html+="<div class=\"top-user\"><div style=\"margin-top:10px;font-weight:bold;\">🏆 "
+    +esc(u.wallet)+" — "+esc(u.score)+"</div>";
+  if(u.nfts && u.nfts.length){
+   html+="<div class=\"nfts\">";
+   u.nfts.forEach(n=>{
+    if(n.image){
+     html+="<div class=\"nft\"><img src=\""+esc(n.image)+"\" alt=\""+esc(n.name)+"\" loading=\"lazy\">"
+       +"<div class=\"nft-name\">"+esc(n.name)+"</div></div>";
+    }
+   });
+   html+="</div>";
+  }else{
+   html+="<div style=\"margin-top:6px;\">No NFT image data available.</div>";
+  }
+  html+="</div>";
+ });
+ box.innerHTML=html;
+}
+
+function sortScore(toggle=true){if(toggle)desc=!desc;rows.sort((a,b)=>
+ (Number(b.score||0)-Number(a.score||0))*(desc?1:-1));render();}
+function render(){document.getElementById("body").innerHTML=rows.map((r,i)=>
+ "<tr><td>"+rankLabel(i+1)+"</td><td>"+esc(r.wallet)+"</td><td><b>"+esc(r.score)+"</b></td></tr>").join("");}
+function rankLabel(rank){
+ if(rank===1) return "🥇 1";
+ if(rank===2) return "🥈 2";
+ if(rank===3) return "🥉 3";
+ return String(rank);
+}
+function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");}
+</script></body></html>
